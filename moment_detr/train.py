@@ -53,6 +53,7 @@ def train_epoch(model, criterion, train_loader, optimizer, opt, epoch_i, tb_writ
         time_meters["dataloading_time"].update(time.time() - timer_dataloading)
 
         timer_start = time.time()
+        print(batch[0])
         model_inputs, targets = prepare_batch_inputs(batch[1], opt.device, non_blocking=opt.pin_memory)
         time_meters["prepare_inputs_time"].update(time.time() - timer_start)
 
@@ -218,6 +219,7 @@ def start_training():
         data_path=opt.train_path,
         v_feat_dirs=opt.v_feat_dirs,
         q_feat_dir=opt.t_feat_dir,
+        q_neg_feat_dir = opt.t_neg_feat_dir,
         q_feat_type="last_hidden_state",
         max_q_l=opt.max_q_l,
         max_v_l=opt.max_v_l,

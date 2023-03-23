@@ -63,6 +63,13 @@ class MomentDETR(nn.Module):
             LinearLayer(hidden_dim, hidden_dim, layer_norm=True, dropout=input_dropout, relu=relu_args[1]),
             LinearLayer(hidden_dim, hidden_dim, layer_norm=True, dropout=input_dropout, relu=relu_args[2])
         ][:n_input_proj])
+        
+        self.input_neg_txt_proj = nn.Sequential(*[
+            LinearLayer(txt_dim, hidden_dim, layer_norm=True, dropout=input_dropout, relu=relu_args[0]),
+            LinearLayer(hidden_dim, hidden_dim, layer_norm=True, dropout=input_dropout, relu=relu_args[1]),
+            LinearLayer(hidden_dim, hidden_dim, layer_norm=True, dropout=input_dropout, relu=relu_args[2])
+        ][:n_input_proj])
+        
         self.input_vid_proj = nn.Sequential(*[
             LinearLayer(vid_dim, hidden_dim, layer_norm=True, dropout=input_dropout, relu=relu_args[0]),
             LinearLayer(hidden_dim, hidden_dim, layer_norm=True, dropout=input_dropout, relu=relu_args[1]),
@@ -77,11 +84,14 @@ class MomentDETR(nn.Module):
         self.saliency_proj = nn.Linear(hidden_dim, 1)
         self.aux_loss = aux_loss
 
-    def forward(self, src_txt, src_txt_mask, src_vid, src_vid_mask):
+    def forward(self, src_txt, src_txt_mask, src_neg_txt, src_neg_txt_mask, src_vid, src_vid_mask):
         """The forward expects two tensors:
                - src_txt: [batch_size, L_txt, D_txt]
                - src_txt_mask: [batch_size, L_txt], containing 0 on padded pixels,
                     will convert to 1 as padding later for transformer
+                    
+               - src_neg_txt
+               - src_neg_txt_mask
                - src_vid: [batch_size, L_vid, D_vid]
                - src_vid_mask: [batch_size, L_vid], containing 0 on padded pixels,
                     will convert to 1 as padding later for transformer
@@ -96,14 +106,16 @@ class MomentDETR(nn.Module):
         """
         src_vid = self.input_vid_proj(src_vid)
         src_txt = self.input_txt_proj(src_txt)
-        src = torch.cat([src_vid, src_txt], dim=1)  # (bsz, L_vid+L_txt, d)
-        mask = torch.cat([src_vid_mask, src_txt_mask], dim=1).bool()  # (bsz, L_vid+L_txt)
+        src_neg_txt = self.input_neg_txt_proj(src_neg_txt)
+        src = torch.cat([src_vid, src_txt, src_neg_txt], dim=1)  # (bsz, L_vid+L_txt, d)
+        mask = torch.cat([src_vid_mask, src_txt_mask, src_neg_txt_mask], dim=1).bool()  # (bsz, L_vid+L_txt)
         # TODO should we remove or use different positional embeddings to the src_txt?
         pos_vid = self.position_embed(src_vid, src_vid_mask)  # (bsz, L_vid, d)
         pos_txt = self.txt_position_embed(src_txt) if self.use_txt_pos else torch.zeros_like(src_txt)  # (bsz, L_txt, d)
+        pos_neg_txt = self.txt_position_embed(src_neg_txt) if self.use_txt_pos else torch.zeros_like(src_neg_txt)
         # pos_txt = torch.zeros_like(src_txt)
         # pad zeros for txt positions
-        pos = torch.cat([pos_vid, pos_txt], dim=1)
+        pos = torch.cat([pos_vid, pos_txt, pos_neg_txt], dim=1)
         # (#layers, bsz, #queries, d), (bsz, L_vid+L_txt, d)
         hs, memory = self.transformer(src, ~mask, self.query_embed.weight, pos)
         outputs_class = self.class_embed(hs)  # (#layers, batch_size, #queries, #classes)
@@ -114,6 +126,7 @@ class MomentDETR(nn.Module):
 
         txt_mem = memory[:, src_vid.shape[1]:]  # (bsz, L_txt, d)
         vid_mem = memory[:, :src_vid.shape[1]]  # (bsz, L_vid, d)
+        
         if self.contrastive_align_loss:
             proj_queries = F.normalize(self.contrastive_align_projection_query(hs), p=2, dim=-1)
             proj_txt_mem = F.normalize(self.contrastive_align_projection_txt(txt_mem), p=2, dim=-1)
@@ -240,8 +253,10 @@ class SetCriterion(nn.Module):
         if "saliency_pos_labels" not in targets:
             return {"loss_saliency": 0}
         saliency_scores = outputs["saliency_scores"]  # (N, L)
+        
         pos_indices = targets["saliency_pos_labels"]  # (N, #pairs)
         neg_indices = targets["saliency_neg_labels"]  # (N, #pairs)
+        # print(saliency_scores, pos_indices, neg_indices)
         num_pairs = pos_indices.shape[1]  # typically 2 or 4
         batch_indices = torch.arange(len(saliency_scores)).to(saliency_scores.device)
         pos_scores = torch.stack(

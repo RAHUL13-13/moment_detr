@@ -25,7 +25,7 @@ class StartEndDataset(Dataset):
     }
     """
 
-    def __init__(self, dset_name, data_path, v_feat_dirs, q_feat_dir,
+    def __init__(self, dset_name, data_path, v_feat_dirs, q_feat_dir, q_neg_feat_dir,
                  q_feat_type="last_hidden_state",
                  max_q_l=32, max_v_l=75, data_ratio=1.0, ctx_mode="video",
                  normalize_v=True, normalize_t=True, load_labels=True,
@@ -36,6 +36,7 @@ class StartEndDataset(Dataset):
         self.v_feat_dirs = v_feat_dirs \
             if isinstance(v_feat_dirs, list) else [v_feat_dirs]
         self.q_feat_dir = q_feat_dir
+        self.q_neg_feat_dir = q_neg_feat_dir,
         self.q_feat_type = q_feat_type
         self.max_q_l = max_q_l
         self.max_v_l = max_v_l
@@ -51,7 +52,7 @@ class StartEndDataset(Dataset):
         self.txt_drop_ratio = txt_drop_ratio
         if "val" in data_path or "test" in data_path:
             assert txt_drop_ratio == 0
-
+        
         # checks
         assert q_feat_type in self.Q_FEAT_TYPES
 
@@ -75,6 +76,7 @@ class StartEndDataset(Dataset):
 
         model_inputs = dict()
         model_inputs["query_feat"] = self._get_query_feat_by_qid(meta["qid"])  # (Dq, ) or (Lq, Dq)
+        model_inputs["neg_query_feat"] = self._get_neg_query_feat_by_qid(meta["qid"])
         if self.use_video:
             model_inputs["video_feat"] = self._get_video_feat_by_vid(meta["vid"])  # (Lv, Dv)
             ctx_l = len(model_inputs["video_feat"])
@@ -182,6 +184,20 @@ class StartEndDataset(Dataset):
             q_feat = self.random_drop_rows(q_feat)
         return torch.from_numpy(q_feat)  # (D, ) or (Lq, D)
 
+    def _get_neg_query_feat_by_qid(self, qid):
+        q_neg_feat_dir = self.q_neg_feat_dir[0]
+        q_neg_feat_dir = join(q_neg_feat_dir, f"qid{qid}.npy")
+        
+        q_feat = np.load(q_neg_feat_dir)
+        
+        if self.q_feat_type == "last_hidden_state":
+            q_feat = q_feat[:self.max_q_l]
+        if self.normalize_t:
+            q_feat = l2_normalize_np_array(q_feat)
+        if self.txt_drop_ratio > 0:
+            q_feat = self.random_drop_rows(q_feat)
+        return torch.from_numpy(q_feat)  # (D, ) or (Lq, D)
+
     def random_drop_rows(self, embeddings):
         """randomly mask num_drop rows in embeddings to be zero.
         Args:
@@ -194,7 +210,7 @@ class StartEndDataset(Dataset):
             embeddings[row_indices] = 0
         return embeddings
 
-    def _get_video_feat_by_vid(self, vid):
+    def     (self, vid):
         v_feat_list = []
         for _feat_dir in self.v_feat_dirs:
             _feat_path = join(_feat_dir, f"{vid}.npz")
@@ -230,6 +246,8 @@ def prepare_batch_inputs(batched_model_inputs, device, non_blocking=False):
     model_inputs = dict(
         src_txt=batched_model_inputs["query_feat"][0].to(device, non_blocking=non_blocking),
         src_txt_mask=batched_model_inputs["query_feat"][1].to(device, non_blocking=non_blocking),
+        src_neg_txt = batched_model_inputs["neg_query_feat"][0].to(device, non_blocking=non_blocking),
+        src_neg_txt_mask = batched_model_inputs["neg_query_feat"][1].to(device, non_blocking=non_blocking),
         src_vid=batched_model_inputs["video_feat"][0].to(device, non_blocking=non_blocking),
         src_vid_mask=batched_model_inputs["video_feat"][1].to(device, non_blocking=non_blocking),
     )

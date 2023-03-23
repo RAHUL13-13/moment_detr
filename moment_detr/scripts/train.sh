@@ -28,6 +28,7 @@ fi
 # text features
 if [[ ${t_feat_type} == "clip" ]]; then
   t_feat_dir=${feat_root}/clip_text_features/
+  t_neg_feat_dir=${feat_root}/clip_text_antithetic_feature/
   t_feat_dim=512
 else
   echo "Wrong arg for t_feat_type."
@@ -47,6 +48,7 @@ PYTHONPATH=$PYTHONPATH:. python moment_detr/train.py \
 --v_feat_dirs ${v_feat_dirs[@]} \
 --v_feat_dim ${v_feat_dim} \
 --t_feat_dir ${t_feat_dir} \
+--t_neg_feat_dir ${t_neg_feat_dir} \
 --t_feat_dim ${t_feat_dim} \
 --bsz ${bsz} \
 --results_root ${results_root} \

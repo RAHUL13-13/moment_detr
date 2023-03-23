@@ -74,6 +74,7 @@ class BaseOptions(object):
                             help="video feature dirs. If more than one, will concat their features. "
                                  "Note that sub ctx features are also accepted here.")
         parser.add_argument("--t_feat_dir", type=str, help="text/query feature dir")
+        parser.add_argument("--t_neg_feat_dir", type=str, help="negative text/query feature dir")
         parser.add_argument("--v_feat_dim", type=int, help="video feature dim")
         parser.add_argument("--t_feat_dim", type=int, help="text/query feature dim")
         parser.add_argument("--ctx_mode", type=str, default="video_tef")
