@@ -168,8 +168,6 @@ class MomentDETR(nn.Module):
             return out
             
         else:
-            while(1):
-                print("svd")
             src_vid = self.input_vid_proj(src_vid)
             src_txt = self.input_txt_proj(src_txt)
             src = torch.cat([src_vid, src_txt], dim=1)  # (bsz, L_vid+L_txt, d)
