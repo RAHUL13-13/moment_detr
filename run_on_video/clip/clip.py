@@ -70,7 +70,7 @@ def available_models() -> List[str]:
     return list(_MODELS.keys())
 
 
-def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", jit=True):
+def load(name: str, device: Union[str, torch.device] = "cuda:7" if torch.cuda.is_available() else "cpu", jit=True):
     """Load a CLIP model
 
     Parameters
@@ -127,7 +127,7 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
 
         for graph in graphs:
             for node in graph.findAllNodes("prim::Constant"):
-                if "value" in node.attributeNames() and str(node["value"]).startswith("cuda"):
+                if "value" in node.attributeNames() and str(node["value"]).startswith("cuda:7"):
                     node.copyAttributes(device_node)
 
     model.apply(patch_device)

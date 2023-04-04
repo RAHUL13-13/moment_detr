@@ -5,6 +5,7 @@ DETR model and criterion classes.
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.nn.functional import cosine_similarity
 
 from moment_detr.span_utils import generalized_temporal_iou, span_cxw_to_xx
 
@@ -12,6 +13,7 @@ from moment_detr.matcher import build_matcher
 from moment_detr.transformer import build_transformer
 from moment_detr.position_encoding import build_position_encoding
 from moment_detr.misc import accuracy
+import torch.nn.functional as F
 
 
 class MomentDETR(nn.Module):
@@ -80,11 +82,15 @@ class MomentDETR(nn.Module):
             self.contrastive_align_projection_query = nn.Linear(hidden_dim, contrastive_hdim)
             self.contrastive_align_projection_txt = nn.Linear(hidden_dim, contrastive_hdim)
             self.contrastive_align_projection_vid = nn.Linear(hidden_dim, contrastive_hdim)
-
+            
+        self.contrastive_projection_txt = nn.Linear(hidden_dim, contrastive_hdim)
+        self.contrastive_projection_vid = nn.Linear(hidden_dim, contrastive_hdim)
+        self.contrastive_projection_text_neg = nn.Linear(hidden_dim, contrastive_hdim)
+        
         self.saliency_proj = nn.Linear(hidden_dim, 1)
         self.aux_loss = aux_loss
 
-    def forward(self, src_txt, src_txt_mask, src_neg_txt, src_neg_txt_mask, src_vid, src_vid_mask):
+    def forward(self, src_txt, src_txt_mask, src_vid, src_vid_mask, src_neg_txt=None, src_neg_txt_mask=None):
         """The forward expects two tensors:
                - src_txt: [batch_size, L_txt, D_txt]
                - src_txt_mask: [batch_size, L_txt], containing 0 on padded pixels,
@@ -104,50 +110,107 @@ class MomentDETR(nn.Module):
                - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
                                 dictionnaries containing the two above keys for each decoder layer.
         """
-        src_vid = self.input_vid_proj(src_vid)
-        src_txt = self.input_txt_proj(src_txt)
-        src_neg_txt = self.input_neg_txt_proj(src_neg_txt)
-        src = torch.cat([src_vid, src_txt, src_neg_txt], dim=1)  # (bsz, L_vid+L_txt, d)
-        mask = torch.cat([src_vid_mask, src_txt_mask, src_neg_txt_mask], dim=1).bool()  # (bsz, L_vid+L_txt)
-        # TODO should we remove or use different positional embeddings to the src_txt?
-        pos_vid = self.position_embed(src_vid, src_vid_mask)  # (bsz, L_vid, d)
-        pos_txt = self.txt_position_embed(src_txt) if self.use_txt_pos else torch.zeros_like(src_txt)  # (bsz, L_txt, d)
-        pos_neg_txt = self.txt_position_embed(src_neg_txt) if self.use_txt_pos else torch.zeros_like(src_neg_txt)
-        # pos_txt = torch.zeros_like(src_txt)
-        # pad zeros for txt positions
-        pos = torch.cat([pos_vid, pos_txt, pos_neg_txt], dim=1)
-        # (#layers, bsz, #queries, d), (bsz, L_vid+L_txt, d)
-        hs, memory = self.transformer(src, ~mask, self.query_embed.weight, pos)
-        outputs_class = self.class_embed(hs)  # (#layers, batch_size, #queries, #classes)
-        outputs_coord = self.span_embed(hs)  # (#layers, bsz, #queries, 2 or max_v_l * 2)
-        if self.span_loss_type == "l1":
-            outputs_coord = outputs_coord.sigmoid()
-        out = {'pred_logits': outputs_class[-1], 'pred_spans': outputs_coord[-1]}
-
-        txt_mem = memory[:, src_vid.shape[1]:]  # (bsz, L_txt, d)
-        vid_mem = memory[:, :src_vid.shape[1]]  # (bsz, L_vid, d)
-        
-        if self.contrastive_align_loss:
-            proj_queries = F.normalize(self.contrastive_align_projection_query(hs), p=2, dim=-1)
-            proj_txt_mem = F.normalize(self.contrastive_align_projection_txt(txt_mem), p=2, dim=-1)
-            proj_vid_mem = F.normalize(self.contrastive_align_projection_vid(vid_mem), p=2, dim=-1)
-            out.update(dict(
-                proj_queries=proj_queries[-1],
-                proj_txt_mem=proj_txt_mem,
-                proj_vid_mem=proj_vid_mem
-            ))
-
-        out["saliency_scores"] = self.saliency_proj(vid_mem).squeeze(-1)  # (bsz, L_vid)
-
-        if self.aux_loss:
-            # assert proj_queries and proj_txt_mem
-            out['aux_outputs'] = [
-                {'pred_logits': a, 'pred_spans': b} for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
+        if src_neg_txt is not None:
+            src_vid = self.input_vid_proj(src_vid)
+            src_txt = self.input_txt_proj(src_txt)
+            src_neg_txt = self.input_neg_txt_proj(src_neg_txt)
+            src = torch.cat([src_vid, src_txt, src_neg_txt], dim=1)  # (bsz, L_vid+L_txt, d)
+            mask = torch.cat([src_vid_mask, src_txt_mask, src_neg_txt_mask], dim=1).bool()  # (bsz, L_vid+L_txt)
+            # TODO should we remove or use different positional embeddings to the src_txt?
+            pos_vid = self.position_embed(src_vid, src_vid_mask)  # (bsz, L_vid, d)
+            pos_txt = self.txt_position_embed(src_txt) if self.use_txt_pos else torch.zeros_like(src_txt)  # (bsz, L_txt, d)
+            pos_neg_txt = self.txt_position_embed(src_neg_txt) if self.use_txt_pos else torch.zeros_like(src_neg_txt)
+            # pos_txt = torch.zeros_like(src_txt)
+            # pad zeros for txt positions
+            pos = torch.cat([pos_vid, pos_txt, pos_neg_txt], dim=1)
+            # (#layers, bsz, #queries, d), (bsz, L_vid+L_txt, d)
+            hs, memory = self.transformer(src, ~mask, self.query_embed.weight, pos)
+            outputs_class = self.class_embed(hs)  # (#layers, batch_size, #queries, #classes)
+            outputs_coord = self.span_embed(hs)  # (#layers, bsz, #queries, 2 or max_v_l * 2)
+            if self.span_loss_type == "l1":
+                outputs_coord = outputs_coord.sigmoid()
+            out = {'pred_logits': outputs_class[-1], 'pred_spans': outputs_coord[-1]}
+            
+            text_siz = (memory.shape[1]-src_vid.shape[1])//2
+            
+            vid_mem = memory[:, : src_vid.shape[1]]
+            txt_mem = memory[:, src_vid.shape[1] : -text_siz:]       
+            neg_txt_mem = memory[:, -text_siz:]
+            # print(txt_mem.shape, vid_mem.shape, neg_txt_mem.shape)
+            
             if self.contrastive_align_loss:
-                assert proj_queries is not None
-                for idx, d in enumerate(proj_queries[:-1]):
-                    out['aux_outputs'][idx].update(dict(proj_queries=d, proj_txt_mem=proj_txt_mem))
-        return out
+                proj_queries = F.normalize(self.contrastive_align_projection_query(hs), p=2, dim=-1)
+                proj_txt_mem = F.normalize(self.contrastive_align_projection_txt(txt_mem), p=2, dim=-1)
+                proj_vid_mem = F.normalize(self.contrastive_align_projection_vid(vid_mem), p=2, dim=-1)
+                out.update(dict(
+                    proj_queries=proj_queries[-1],
+                    proj_txt_mem=proj_txt_mem,
+                    proj_vid_mem=proj_vid_mem
+                ))
+        
+            out["saliency_scores"] = self.saliency_proj(vid_mem).squeeze(-1)  # (bsz, L_vid)
+            
+            proj_txt_mem = F.normalize(self.contrastive_projection_txt(txt_mem), p=2, dim=-1)
+            proj_vid_mem = F.normalize(self.contrastive_projection_vid(vid_mem), p=2, dim=-1)
+            proj_neg_txt_mem = F.normalize(self.contrastive_projection_text_neg(neg_txt_mem), p=2, dim=-1)
+            
+            out["for_contrastive_loss"] = [proj_txt_mem, proj_vid_mem, proj_neg_txt_mem]
+            
+            if self.aux_loss:
+                # assert proj_queries and proj_txt_mem
+                out['aux_outputs'] = [
+                    {'pred_logits': a, 'pred_spans': b} for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
+            
+                if self.contrastive_align_loss:
+                    assert proj_queries is not None
+                    for idx, d in enumerate(proj_queries[:-1]):
+                        out['aux_outputs'][idx].update(dict(proj_queries=d, proj_txt_mem=proj_txt_mem))
+            return out
+            
+        else:
+            while(1):
+                print("svd")
+            src_vid = self.input_vid_proj(src_vid)
+            src_txt = self.input_txt_proj(src_txt)
+            src = torch.cat([src_vid, src_txt], dim=1)  # (bsz, L_vid+L_txt, d)
+            mask = torch.cat([src_vid_mask, src_txt_mask], dim=1).bool()  # (bsz, L_vid+L_txt)
+            # TODO should we remove or use different positional embeddings to the src_txt?
+            pos_vid = self.position_embed(src_vid, src_vid_mask)  # (bsz, L_vid, d)
+            pos_txt = self.txt_position_embed(src_txt) if self.use_txt_pos else torch.zeros_like(src_txt)  # (bsz, L_txt, d)
+            # pos_txt = torch.zeros_like(src_txt)
+            # pad zeros for txt positions
+            pos = torch.cat([pos_vid, pos_txt], dim=1)
+            # (#layers, bsz, #queries, d), (bsz, L_vid+L_txt, d)
+            hs, memory = self.transformer(src, ~mask, self.query_embed.weight, pos)
+            outputs_class = self.class_embed(hs)  # (#layers, batch_size, #queries, #classes)
+            outputs_coord = self.span_embed(hs)  # (#layers, bsz, #queries, 2 or max_v_l * 2)
+            if self.span_loss_type == "l1":
+                outputs_coord = outputs_coord.sigmoid()
+            out = {'pred_logits': outputs_class[-1], 'pred_spans': outputs_coord[-1]}
+
+            txt_mem = memory[:, src_vid.shape[1]:]  # (bsz, L_txt, d)
+            vid_mem = memory[:, :src_vid.shape[1]]  # (bsz, L_vid, d)
+            if self.contrastive_align_loss:
+                proj_queries = F.normalize(self.contrastive_align_projection_query(hs), p=2, dim=-1)
+                proj_txt_mem = F.normalize(self.contrastive_align_projection_txt(txt_mem), p=2, dim=-1)
+                proj_vid_mem = F.normalize(self.contrastive_align_projection_vid(vid_mem), p=2, dim=-1)
+                out.update(dict(
+                    proj_queries=proj_queries[-1],
+                    proj_txt_mem=proj_txt_mem,
+                    proj_vid_mem=proj_vid_mem
+                ))
+
+            out["saliency_scores"] = self.saliency_proj(vid_mem).squeeze(-1)  # (bsz, L_vid)
+
+            if self.aux_loss:
+                # assert proj_queries and proj_txt_mem
+                out['aux_outputs'] = [
+                    {'pred_logits': a, 'pred_spans': b} for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
+                if self.contrastive_align_loss:
+                    assert proj_queries is not None
+                    for idx, d in enumerate(proj_queries[:-1]):
+                        out['aux_outputs'][idx].update(dict(proj_queries=d, proj_txt_mem=proj_txt_mem))
+            return out
 
     # @torch.jit.unused
     # def _set_aux_loss(self, outputs_class, outputs_coord):
@@ -267,6 +330,52 @@ class SetCriterion(nn.Module):
             / (len(pos_scores) * num_pairs) * 2  # * 2 to keep the loss the same scale
         return {"loss_saliency": loss_saliency}
 
+    def contrastive_full_videoORtext_level(self, outputs, targets, indices, log=True):
+        if "for_contrastive_loss" not in outputs.keys():
+            while(1):
+                print("svd")
+            return {"contrastive_full_videoORtext_level" : 0}   
+        # print("contrastive_full_videoORtext_level")
+        """# cosine between text and neg text
+        texts = outputs["for_contrastive_loss"][0].mean(dim=1)
+        neg_texts = outputs["for_contrastive_loss"][2].mean(dim=1)
+        
+        margin =0.1
+        batch_size = texts.shape[0]
+        sim = cosine_similarity(texts, neg_texts)
+        sim = (sim + 1) / 2
+        # print(sim)
+        zeros = torch.zeros(batch_size).cuda(7)
+        margined = torch.max(zeros, sim - margin)
+        loss_contrastive_full_videoORtext_level = margined.mean()
+        return {"contrastive_full_videoORtext_level" : loss_contrastive_full_videoORtext_level}"""
+        
+        # contrastive between text and video and neg text
+        texts = outputs["for_contrastive_loss"][0].mean(dim=1)  # 32, 64    tokens, embeddings
+        vids = outputs["for_contrastive_loss"][1].mean(dim=1)
+        neg_texts = outputs["for_contrastive_loss"][2].mean(dim=1)
+
+        texts = texts / texts.norm(dim=-1, keepdim=True)
+        vids = vids / vids.norm(dim=-1, keepdim=True)
+        neg_texts = neg_texts / neg_texts.norm(dim=-1, keepdim=True)
+        
+        texts = texts.permute(1, 0)
+        neg_texts = neg_texts.permute(1, 0)
+        
+        t_v = vids @ texts  # 32, 32     vid, text
+        nt_v = vids @ neg_texts
+        
+        concat = torch.cat((t_v, nt_v), dim = 1) # 32,64   vid, text+neg_text
+        concat /= self.temperature
+        
+        v2t = F.log_softmax(concat, dim=0)
+        t2v = F.log_softmax(concat, dim=1)
+        
+        loss_contrastive_full_videoORtext_level = (-torch.diag(v2t).mean() - torch.diag(t2v).mean())/2
+        loss_contrastive_full_videoORtext_level *= self.temperature**2
+        return {"contrastive_full_videoORtext_level" : loss_contrastive_full_videoORtext_level}
+
+    
     def loss_contrastive_align(self, outputs, targets, indices, log=True):
         """encourage higher scores between matched query span and input text"""
         normalized_text_embed = outputs["proj_txt_mem"]  # (bsz, #tokens, d)  text tokens
@@ -325,6 +434,7 @@ class SetCriterion(nn.Module):
             "labels": self.loss_labels,
             "contrastive_align": self.loss_contrastive_align,
             "saliency": self.loss_saliency,
+            "contrastive_full_videoORtext_level": self.contrastive_full_videoORtext_level,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, **kwargs)
@@ -355,7 +465,11 @@ class SetCriterion(nn.Module):
                     if "saliency" == loss:  # skip as it is only in the top layer
                         continue
                     kwargs = {}
-                    l_dict = self.get_loss(loss, aux_outputs, targets, indices, **kwargs)
+                    
+                    if loss == "contrastive_full_videoORtext_level":
+                        l_dict = self.get_loss(loss, outputs, targets, indices, **kwargs)
+                    else:
+                        l_dict = self.get_loss(loss, aux_outputs, targets, indices, **kwargs)
                     l_dict = {k + f'_{i}': v for k, v in l_dict.items()}
                     losses.update(l_dict)
 
@@ -436,7 +550,8 @@ def build_model(args):
     weight_dict = {"loss_span": args.span_loss_coef,
                    "loss_giou": args.giou_loss_coef,
                    "loss_label": args.label_loss_coef,
-                   "loss_saliency": args.lw_saliency}
+                   "loss_saliency": args.lw_saliency,
+                   "contrastive_full_videoORtext_level": args.nce_loss_coef}
     if args.contrastive_align_loss:
         weight_dict["loss_contrastive_align"] = args.contrastive_align_loss_coef
     # TODO this is a hack
@@ -446,7 +561,7 @@ def build_model(args):
             aux_weight_dict.update({k + f'_{i}': v for k, v in weight_dict.items() if k != "loss_saliency"})
         weight_dict.update(aux_weight_dict)
 
-    losses = ['spans', 'labels', 'saliency']
+    losses = ['spans', 'labels', 'saliency', 'contrastive_full_videoORtext_level']
     if args.contrastive_align_loss:
         losses += ["contrastive_align"]
     criterion = SetCriterion(

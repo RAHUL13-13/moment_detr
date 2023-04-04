@@ -62,6 +62,7 @@
     "set_cost_giou": 1,
     "set_cost_class": 4,
     "span_loss_coef": 10,
+    "nce_loss_coef": 1,
     "giou_loss_coef": 1,
     "label_loss_coef": 4,
     "eos_coef": 0.1,

@@ -10,7 +10,7 @@ import numpy as np
 
 
 class MomentDETRPredictor:
-    def __init__(self, ckpt_path, clip_model_name_or_path="ViT-B/32", device="cuda"):
+    def __init__(self, ckpt_path, clip_model_name_or_path="ViT-B/32", device="cuda:7"):
         self.clip_len = 2  # seconds
         self.device = device
         print("Loading feature extractors...")
@@ -103,7 +103,7 @@ def run_example():
     moment_detr_predictor = MomentDETRPredictor(
         ckpt_path=ckpt_path,
         clip_model_name_or_path=clip_model_name_or_path,
-        device="cuda"
+        device="cuda:7"
     )
     print("Run prediction...")
     predictions = moment_detr_predictor.localize_moment(

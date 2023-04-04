@@ -192,7 +192,7 @@ def eval_epoch(model, eval_dataset, opt, save_submission_filename, epoch_i=None,
 def setup_model(opt):
     """setup model/optimizer/scheduler and load checkpoints when needed"""
     logger.info("setup model/optimizer/scheduler")
-    model, criterion = build_model(opt)
+    model, criterion =  build_model(opt)
     if opt.device.type == "cuda":
         logger.info("CUDA enabled.")
         model.to(opt.device)
@@ -230,6 +230,7 @@ def start_inference():
         v_feat_dirs=opt.v_feat_dirs,
         q_feat_dir=opt.t_feat_dir,
         q_feat_type="last_hidden_state",
+        q_neg_feat_dir = opt.t_neg_feat_dir,
         max_q_l=opt.max_q_l,
         max_v_l=opt.max_v_l,
         ctx_mode=opt.ctx_mode,

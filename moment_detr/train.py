@@ -53,7 +53,7 @@ def train_epoch(model, criterion, train_loader, optimizer, opt, epoch_i, tb_writ
         time_meters["dataloading_time"].update(time.time() - timer_dataloading)
 
         timer_start = time.time()
-        print(batch[0])
+        # print(batch[0])
         model_inputs, targets = prepare_batch_inputs(batch[1], opt.device, non_blocking=opt.pin_memory)
         time_meters["prepare_inputs_time"].update(time.time() - timer_start)
 
@@ -99,7 +99,7 @@ def train_epoch(model, criterion, train_loader, optimizer, opt, epoch_i, tb_writ
 
 
 def train(model, criterion, optimizer, lr_scheduler, train_dataset, val_dataset, opt):
-    if opt.device.type == "cuda":
+    if opt.device.type == "cuda:7":
         logger.info("CUDA enabled.")
         model.to(opt.device)
 
@@ -241,6 +241,7 @@ def start_training():
         dataset_config["txt_drop_ratio"] = 0
         dataset_config["q_feat_dir"] = opt.t_feat_dir.replace("sub_features", "text_features")  # for pretraining
         # dataset_config["load_labels"] = False  # uncomment to calculate eval loss
+        # dataset_config["q_neg_feat_dir"] = None
         eval_dataset = StartEndDataset(**dataset_config)
     else:
         eval_dataset = None

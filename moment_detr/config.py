@@ -106,7 +106,7 @@ class BaseOptions(object):
         # other model configs
         parser.add_argument("--n_input_proj", type=int, default=2, help="#layers to encoder input")
         parser.add_argument("--contrastive_hdim", type=int, default=64, help="dim for contrastive embeddings")
-        parser.add_argument("--temperature", type=float, default=0.07, help="temperature nce contrastive_align_loss")
+        parser.add_argument("--temperature", type=float, default=0.77, help="temperature nce contrastive_align_loss")
         # Loss
         parser.add_argument("--lw_saliency", type=float, default=1.,
                             help="weight for saliency loss, set to 0 will ignore")
@@ -126,6 +126,7 @@ class BaseOptions(object):
                             help="Class coefficient in the matching cost")
 
         # * Loss coefficients
+        parser.add_argument('--nce_loss_coef', default=1, type=float)
         parser.add_argument('--span_loss_coef', default=10, type=float)
         parser.add_argument('--giou_loss_coef', default=1, type=float)
         parser.add_argument('--label_loss_coef', default=4, type=float)
@@ -200,7 +201,7 @@ class BaseOptions(object):
         opt.train_log_filepath = os.path.join(opt.results_dir, self.train_log_filename)
         opt.eval_log_filepath = os.path.join(opt.results_dir, self.eval_log_filename)
         opt.tensorboard_log_dir = os.path.join(opt.results_dir, self.tensorboard_log_dir)
-        opt.device = torch.device("cuda" if opt.device >= 0 else "cpu")
+        opt.device = torch.device("cuda:7" if opt.device >= 0 else "cpu")
         opt.pin_memory = not opt.no_pin_memory
 
         opt.use_tef = "tef" in opt.ctx_mode

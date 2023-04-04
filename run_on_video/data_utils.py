@@ -3,11 +3,10 @@ import os
 import numpy as np
 import ffmpeg
 import math
-from run_on_video import clip
-
+import clip
 
 class ClipFeatureExtractor:
-    def __init__(self, framerate=1/2, size=224, centercrop=True, model_name_or_path="ViT-B/32", device="cuda"):
+    def __init__(self, framerate=1/2, size=224, centercrop=True, model_name_or_path="ViT-B/32", device="cuda:7"):
         self.video_loader = VideoLoader(framerate=framerate, size=size, centercrop=centercrop)
         print("Loading CLIP models")
         self.clip_extractor, _ = clip.load(model_name_or_path, device=device, jit=False)
