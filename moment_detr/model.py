@@ -91,7 +91,8 @@ class MomentDETR(nn.Module):
         self.aux_loss = aux_loss
 
     def forward(self, src_txt, src_txt_mask, src_vid, src_vid_mask, src_neg_txt=None, src_neg_txt_mask=None):
-        """The forward expects two tensors:
+        """
+        The forward expects two tensors:
                - src_txt: [batch_size, L_txt, D_txt]
                - src_txt_mask: [batch_size, L_txt], containing 0 on padded pixels,
                     will convert to 1 as padding later for transformer
@@ -113,29 +114,42 @@ class MomentDETR(nn.Module):
         if src_neg_txt is not None:
             src_vid = self.input_vid_proj(src_vid)
             src_txt = self.input_txt_proj(src_txt)
+            
             src_neg_txt = self.input_neg_txt_proj(src_neg_txt)
-            src = torch.cat([src_vid, src_txt, src_neg_txt], dim=1)  # (bsz, L_vid+L_txt, d)
-            mask = torch.cat([src_vid_mask, src_txt_mask, src_neg_txt_mask], dim=1).bool()  # (bsz, L_vid+L_txt)
+            
+            src = torch.cat([src_vid, src_txt], dim=1)  # (bsz, L_vid+L_txt, d)
+            mask = torch.cat([src_vid_mask, src_txt_mask], dim=1).bool()  # (bsz, L_vid+L_txt)
+            
+            src_incor = torch.cat([src_vid, src_neg_txt], dim=1)  # (bsz, L_vid+L_txt, d)
+            mask_incor = torch.cat([src_vid_mask, src_neg_txt_mask], dim=1).bool()  # (bsz, L_vid+L_txt)
+            
             # TODO should we remove or use different positional embeddings to the src_txt?
             pos_vid = self.position_embed(src_vid, src_vid_mask)  # (bsz, L_vid, d)
             pos_txt = self.txt_position_embed(src_txt) if self.use_txt_pos else torch.zeros_like(src_txt)  # (bsz, L_txt, d)
+            
             pos_neg_txt = self.txt_position_embed(src_neg_txt) if self.use_txt_pos else torch.zeros_like(src_neg_txt)
             # pos_txt = torch.zeros_like(src_txt)
             # pad zeros for txt positions
-            pos = torch.cat([pos_vid, pos_txt, pos_neg_txt], dim=1)
+            pos = torch.cat([pos_vid, pos_txt], dim=1)
+            
+            pos_incorr = torch.cat([pos_vid, pos_neg_txt], dim=1)
             # (#layers, bsz, #queries, d), (bsz, L_vid+L_txt, d)
             hs, memory = self.transformer(src, ~mask, self.query_embed.weight, pos)
+            hs_incorr, memory_incorr = self.transformer(src_incor, ~mask_incor, self.query_embed.weight, pos_incorr)
+            
             outputs_class = self.class_embed(hs)  # (#layers, batch_size, #queries, #classes)
             outputs_coord = self.span_embed(hs)  # (#layers, bsz, #queries, 2 or max_v_l * 2)
+            
             if self.span_loss_type == "l1":
                 outputs_coord = outputs_coord.sigmoid()
             out = {'pred_logits': outputs_class[-1], 'pred_spans': outputs_coord[-1]}
             
-            text_siz = (memory.shape[1]-src_vid.shape[1])//2
+            txt_mem = memory[:, src_vid.shape[1]:]  # (bsz, L_txt, d)
+            vid_mem = memory[:, :src_vid.shape[1]]  # (bsz, L_vid, d)
             
-            vid_mem = memory[:, : src_vid.shape[1]]
-            txt_mem = memory[:, src_vid.shape[1] : -text_siz:]       
-            neg_txt_mem = memory[:, -text_siz:]
+            txt_mem_incorr = memory_incorr[:, src_vid.shape[1]:]  
+            vid_mem_unused = memory_incorr[:, :src_vid.shape[1]]  
+            
             # print(txt_mem.shape, vid_mem.shape, neg_txt_mem.shape)
             
             if self.contrastive_align_loss:
@@ -152,7 +166,8 @@ class MomentDETR(nn.Module):
             
             proj_txt_mem = F.normalize(self.contrastive_projection_txt(txt_mem), p=2, dim=-1)
             proj_vid_mem = F.normalize(self.contrastive_projection_vid(vid_mem), p=2, dim=-1)
-            proj_neg_txt_mem = F.normalize(self.contrastive_projection_text_neg(neg_txt_mem), p=2, dim=-1)
+            
+            proj_neg_txt_mem = F.normalize(self.contrastive_projection_text_neg(txt_mem_incorr), p=2, dim=-1)
             
             out["for_contrastive_loss"] = [proj_txt_mem, proj_vid_mem, proj_neg_txt_mem]
             
@@ -168,12 +183,12 @@ class MomentDETR(nn.Module):
             return out
             
         else:
-            while(1):
-                print("svd")
             src_vid = self.input_vid_proj(src_vid)
             src_txt = self.input_txt_proj(src_txt)
+            
             src = torch.cat([src_vid, src_txt], dim=1)  # (bsz, L_vid+L_txt, d)
             mask = torch.cat([src_vid_mask, src_txt_mask], dim=1).bool()  # (bsz, L_vid+L_txt)
+            
             # TODO should we remove or use different positional embeddings to the src_txt?
             pos_vid = self.position_embed(src_vid, src_vid_mask)  # (bsz, L_vid, d)
             pos_txt = self.txt_position_embed(src_txt) if self.use_txt_pos else torch.zeros_like(src_txt)  # (bsz, L_txt, d)
@@ -332,8 +347,6 @@ class SetCriterion(nn.Module):
 
     def contrastive_full_videoORtext_level(self, outputs, targets, indices, log=True):
         if "for_contrastive_loss" not in outputs.keys():
-            while(1):
-                print("svd")
             return {"contrastive_full_videoORtext_level" : 0}   
         # print("contrastive_full_videoORtext_level")
         """# cosine between text and neg text

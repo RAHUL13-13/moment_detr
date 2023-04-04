@@ -32,7 +32,7 @@ class BaseOptions(object):
                                  "which works by breaking the loops, typically they are not used together.")
         parser.add_argument("--results_root", type=str, default="results")
         parser.add_argument("--exp_id", type=str, default=None, help="id of this run, required at training")
-        parser.add_argument("--seed", type=int, default=2018, help="random seed")
+        parser.add_argument("--seed", type=int, default=8, help="random seed")
         parser.add_argument("--device", type=int, default=0, help="0 cuda, -1 cpu")
         parser.add_argument("--num_workers", type=int, default=4,
                             help="num subprocesses used to load the data, 0: use main process")

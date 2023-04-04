@@ -241,7 +241,7 @@ def start_training():
         dataset_config["txt_drop_ratio"] = 0
         dataset_config["q_feat_dir"] = opt.t_feat_dir.replace("sub_features", "text_features")  # for pretraining
         # dataset_config["load_labels"] = False  # uncomment to calculate eval loss
-        # dataset_config["q_neg_feat_dir"] = None
+        dataset_config["q_neg_feat_dir"] = None
         eval_dataset = StartEndDataset(**dataset_config)
     else:
         eval_dataset = None

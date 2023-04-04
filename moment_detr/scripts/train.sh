@@ -28,7 +28,7 @@ fi
 # text features
 if [[ ${t_feat_type} == "clip" ]]; then
   t_feat_dir=${feat_root}/clip_text_features/
-  t_neg_feat_dir=${feat_root}/clip_text_antithetic_BUT_pushPosTwiceAtTestTime/
+  t_neg_feat_dir=${feat_root}/clip_text_antithetic_feature/
   t_feat_dim=512
 else
   echo "Wrong arg for t_feat_type."

@@ -94,7 +94,7 @@ def compute_mr_results(model, eval_loader, opt, epoch_i=None, criterion=None, tb
     write_tb = tb_writer is not None and epoch_i is not None
 
     mr_res = []
-    for batch in tqdm(eval_loader, desc="compute st ed scores"):
+    for batch in tqdm(eval_loader, desc="compute st ed scores"):        
         query_meta = batch[0]
         model_inputs, targets = prepare_batch_inputs(batch[1], opt.device, non_blocking=opt.pin_memory)
         outputs = model(**model_inputs)
@@ -230,7 +230,7 @@ def start_inference():
         v_feat_dirs=opt.v_feat_dirs,
         q_feat_dir=opt.t_feat_dir,
         q_feat_type="last_hidden_state",
-        q_neg_feat_dir = opt.t_neg_feat_dir,
+        q_neg_feat_dir = None,
         max_q_l=opt.max_q_l,
         max_v_l=opt.max_v_l,
         ctx_mode=opt.ctx_mode,
