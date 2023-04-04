@@ -255,8 +255,6 @@ def prepare_batch_inputs(batched_model_inputs, device, non_blocking=False):
             src_vid_mask=batched_model_inputs["video_feat"][1].to(device, non_blocking=non_blocking),
         )
     else:
-        while(1):
-            print("svd")
         model_inputs = dict(
             src_txt=batched_model_inputs["query_feat"][0].to(device, non_blocking=non_blocking),
             src_txt_mask=batched_model_inputs["query_feat"][1].to(device, non_blocking=non_blocking),
