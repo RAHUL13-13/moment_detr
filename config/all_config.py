@@ -25,7 +25,7 @@ class AllConfig(Config):
         parser.add_argument('--output_dir', type=str, default='./outputs')
         parser.add_argument('--save_every', type=int, default=1, help="Save model every n epochs")
         parser.add_argument('--log_step', type=int, default=10, help="Print training log every n steps")
-        parser.add_argument('--evals_per_epoch', type=int, default=10, help="Number of times to evaluate per epoch")
+        parser.add_argument('--evals_per_epoch', type=int, default=1, help="Number of times to evaluate per epoch")
         parser.add_argument('--load_epoch', type=int, help="Epoch to load from exp_name, or -1 to load model_best.pth")
         parser.add_argument('--eval_window_size', type=int, default=5, help="Size of window to average metrics")
         parser.add_argument('--metric', type=str, default='t2v', help="'t2v'/'v2t'")
@@ -41,7 +41,7 @@ class AllConfig(Config):
         parser.add_argument('--clip_lr', type=float, default=1e-6, help='Learning rate used for CLIP params')
         parser.add_argument('--noclip_lr', type=float, default=1e-5, help='Learning rate used for new params')
         parser.add_argument('--batch_size', type=int, default=32)
-        parser.add_argument('--num_epochs', type=int, default=5)
+        parser.add_argument('--num_epochs', type=int, default=40)
         parser.add_argument('--weight_decay', type=float, default=0.2, help='Weight decay')
         parser.add_argument('--warmup_proportion', type=float, default=0.1, help='Warmup proportion for learning rate schedule')
 
@@ -53,6 +53,7 @@ class AllConfig(Config):
         parser.add_argument('--transformer_dropout', type=float, default=0.3, help='Dropout prob. in the transformer pooling')
 
         # system parameters
+        parser.add_argument('--gpu', type=str, default='7')
         parser.add_argument('--num_workers', type=int, default=8)
         parser.add_argument('--seed', type=int, default=24, help='Random seed')
         parser.add_argument('--no_tensorboard', action='store_true', default=False)

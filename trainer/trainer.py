@@ -43,8 +43,8 @@ class Trainer(BaseTrainer):
         for batch_idx, data in enumerate(self.train_data_loader):
             # then assume we must tokenize the input, e.g. its a string
             if self.tokenizer is not None:
-                data['text'] = self.tokenizer(data['text'], return_tensors='pt', padding=True,
-                                              truncation=True)
+                data['text'] = self.tokenizer(data['text'], return_tensors='pt',
+                                              truncation=True, max_length = 30, pad_to_max_length=True)
             if isinstance(data['text'], torch.Tensor):
                 data['text'] = data['text'].to(self.device)
             else:
@@ -114,7 +114,8 @@ class Trainer(BaseTrainer):
         with torch.no_grad():
             for _, data in tqdm(enumerate(self.valid_data_loader)):
                 if self.tokenizer is not None:
-                    data['text'] = self.tokenizer(data['text'], return_tensors='pt', padding=True, truncation=True)
+                    data['text'] = self.tokenizer(data['text'], return_tensors='pt',
+                                              truncation=True, max_length = 30, pad_to_max_length=True)
                 if isinstance(data['text'], torch.Tensor):
                     data['text'] = data['text'].to(self.device)
                 else:
@@ -143,11 +144,11 @@ class Trainer(BaseTrainer):
                     vid_embeds_per_video_id[v_id] = vid_embeds[idx]
             
             vid_embeds = torch.stack([vid_embeds_per_video_id[v_id] for v_id in vid_embeds_per_video_id])
-             
+            
             # Pool frames for inference once we have all texts and videos
             self.model.pool_frames.cpu()
             vid_embeds_pooled = self.model.pool_frames(text_embeds, vid_embeds)
-            self.model.pool_frames.cuda()
+            self.model.pool_frames.to(torch.device("cuda:"+self.config.gpu))
 
             text_embeds_per_video_id, vid_embeds_pooled_per_video_id = generate_embeds_per_video_id(text_embeds, 
                     vid_embeds_pooled, all_vid_ids, self.pooling_type)

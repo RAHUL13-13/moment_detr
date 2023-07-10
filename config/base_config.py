@@ -45,6 +45,7 @@ class Config(ABC):
         self.seed = args.seed
         self.no_tensorboard = args.no_tensorboard
         self.tb_log_dir = args.tb_log_dir
+        self.gpu = args.gpu
 
    
     @abstractmethod
