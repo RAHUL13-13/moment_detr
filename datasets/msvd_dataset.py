@@ -22,7 +22,7 @@ class MSVDDataset(Dataset):
         self.split_type = split_type
         db_file = '/shared/home/v_rahul_pratap_singh/local_scratch/videoRetrieval/xpool/data/MSVD/captions_msvd.json'
         test_file = '/shared/home/v_rahul_pratap_singh/local_scratch/videoRetrieval/xpool/data/MSVD/test_list_small.txt'
-        train_file = '/shared/home/v_rahul_pratap_singh/local_scratch/videoRetrieval/xpool/data/MSVD/train_list.txt'
+        train_file = '/shared/home/v_rahul_pratap_singh/local_scratch/videoRetrieval/xpool/data/MSVD/train_list_small.txt'
         self.vid2caption = load_json(db_file)
 
         if split_type == 'train':
